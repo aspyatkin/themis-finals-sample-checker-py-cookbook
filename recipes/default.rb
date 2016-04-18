@@ -1,8 +1,7 @@
 id = 'themis-finals-sample-checker-py'
 
-include_recipe 'python::default'
-include_recipe 'python::pip'
-include_recipe 'python::virtualenv'
+include_recipe 'themis-finals::prerequisite_git'
+include_recipe 'themis-finals::prerequisite_python'
 
 directory node[id][:basedir] do
   owner node[id][:user]
@@ -12,13 +11,19 @@ directory node[id][:basedir] do
   action :create
 end
 
-url_repository = "https://github.com/#{node[id][:repository]}"
+url_repository = "https://github.com/#{node[id][:github_repository]}"
 
 if node.chef_environment.start_with? 'development'
-  ssh_key_map = data_bag_item('ssh', node.chef_environment).to_hash.fetch('keys', {})
+  ssh_data_bag_item = nil
+  begin
+    ssh_data_bag_item = data_bag_item('ssh', node.chef_environment)
+  rescue
+  end
+
+  ssh_key_map = (ssh_data_bag_item.nil?) ? {} : ssh_data_bag_item.to_hash.fetch('keys', {})
 
   if ssh_key_map.size > 0
-    url_repository = "git@github.com:#{node[id][:repository]}.git"
+    url_repository = "git@github.com:#{node[id][:github_repository]}.git"
   end
 end
 
@@ -31,8 +36,16 @@ git2 node[id][:basedir] do
 end
 
 if node.chef_environment.start_with? 'development'
-  data_bag_item('git', node.chef_environment).to_hash.fetch('config', {}).each do |key, value|
-    git_config "Git config #{key} at #{node[id][:basedir]}" do
+  git_data_bag_item = nil
+  begin
+    git_data_bag_item = data_bag_item('git', node.chef_environment)
+  rescue
+  end
+
+  git_options = (git_data_bag_item.nil?) ? {} : git_data_bag_item.to_hash.fetch('config', {})
+
+  git_options.each do |key, value|
+    git_config "git-config #{key} at #{node[id][:basedir]}" do
       key key
       value value
       scope 'local'
@@ -43,7 +56,9 @@ if node.chef_environment.start_with? 'development'
   end
 end
 
-python_virtualenv "#{node[id][:basedir]}/.virtualenv" do
+virtualenv_path = ::File.join node[id][:basedir], '.virtualenv'
+
+python_virtualenv virtualenv_path do
   owner node[id][:user]
   group node[id][:group]
   action :create
@@ -52,12 +67,14 @@ end
 python_pip "#{node[id][:basedir]}/requirements.txt" do
   user node[id][:user]
   group node[id][:group]
-  virtualenv "#{node[id][:basedir]}/.virtualenv"
+  virtualenv virtualenv_path
   action :install
   options '-r'
 end
 
-template "#{node['themis-finals'][:basedir]}/god.d/sample-checker-py.god" do
+god_basedir = ::File.join node['themis-finals'][:basedir], 'god.d'
+
+template "#{god_basedir}/sample-checker-py.god" do
   source 'checker.god.erb'
   mode 0644
   variables(
@@ -65,8 +82,8 @@ template "#{node['themis-finals'][:basedir]}/god.d/sample-checker-py.god" do
     user: node[id][:user],
     group: node[id][:group],
     service_alias: node[id][:service_alias],
-    log_level: node[id][:log_level],
-    beanstalkd_uri: "#{node['themis-finals']['beanstalkd']['listen']['address']}:#{node['themis-finals']['beanstalkd']['listen']['port']}",
+    log_level: node[id][:debug] ? 'DEBUG' : 'INFO',
+    beanstalkd_uri: "#{node['themis-finals'][:beanstalkd][:listen][:address]}:#{node['themis-finals'][:beanstalkd][:listen][:port]}",
     processes: node[id][:processes]
   )
   action :create
