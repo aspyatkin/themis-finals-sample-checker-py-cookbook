@@ -61,6 +61,7 @@ virtualenv_path = ::File.join node[id][:basedir], '.virtualenv'
 python_virtualenv virtualenv_path do
   owner node[id][:user]
   group node[id][:group]
+  interpreter node['python']['binary']
   action :create
 end
 
@@ -84,6 +85,7 @@ template "#{god_basedir}/sample-checker-py.god" do
     service_alias: node[id][:service_alias],
     log_level: node[id][:debug] ? 'DEBUG' : 'INFO',
     beanstalkd_uri: "#{node['themis-finals'][:beanstalkd][:listen][:address]}:#{node['themis-finals'][:beanstalkd][:listen][:port]}",
+    beanstalkd_tube_namespace: node['themis-finals'][:beanstalkd][:tube_namespace],
     processes: node[id][:processes]
   )
   action :create

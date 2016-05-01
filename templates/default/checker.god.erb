@@ -10,8 +10,8 @@
     w.env = {
       'BEANSTALKD_URI' => '<%= @beanstalkd_uri %>',
       'LOG_LEVEL' => '<%= @log_level %>',
-      'TUBE_LISTEN' => 'themis.service.<%= @service_alias %>.listen',
-      'TUBE_REPORT' => 'themis.service.<%= @service_alias %>.report'
+      'TUBE_LISTEN' => '<%= @beanstalkd_tube_namespace %>.service.<%= @service_alias %>.listen',
+      'TUBE_REPORT' => '<%= @beanstalkd_tube_namespace %>.service.<%= @service_alias %>.report'
     }
     w.stop_signal = 'INT'
     w.keepalive
