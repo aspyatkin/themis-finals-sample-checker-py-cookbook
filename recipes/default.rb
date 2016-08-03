@@ -60,18 +60,17 @@ end
 virtualenv_path = ::File.join node[id][:basedir], '.virtualenv'
 
 python_virtualenv virtualenv_path do
-  owner node[id][:user]
+  user node[id][:user]
   group node[id][:group]
-  interpreter node['python']['binary']
+  python '2'
   action :create
 end
 
-python_pip "#{node[id][:basedir]}/requirements.txt" do
+pip_requirements "#{node[id][:basedir]}/requirements.txt" do
   user node[id][:user]
   group node[id][:group]
   virtualenv virtualenv_path
   action :install
-  options '-r'
 end
 
 logs_basedir = ::File.join node[id][:basedir], 'logs'
