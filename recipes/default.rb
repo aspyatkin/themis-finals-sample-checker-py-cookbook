@@ -89,7 +89,7 @@ checker_environment = {
   'PATH' => "#{::File.join virtualenv_path, 'bin'}:%(ENV_PATH)s",
   'APP_INSTANCE' => '%(process_num)s',
   'LOG_LEVEL' => node[id]['debug'] ? 'DEBUG' : 'INFO',
-  'BEANSTALKD_URI' => "#{node['themis-finals']['beanstalkd']['listen']['address']}:#{node['themis-finals']['beanstalkd']['listen']['port']}",
+  'BEANSTALKD_URI' => "#{node['themis-finals']['beanstalkd']['host']}:#{node['themis-finals']['beanstalkd']['port']}",
   'TUBE_LISTEN' => "#{node['themis-finals']['beanstalkd']['tube_namespace']}.service.#{node[id]['service_alias']}.listen",
   'TUBE_REPORT' => "#{node['themis-finals']['beanstalkd']['tube_namespace']}.service.#{node[id]['service_alias']}.report"
 }
