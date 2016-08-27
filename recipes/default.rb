@@ -1,8 +1,8 @@
 id = 'themis-finals-sample-checker-py'
 
-include_recipe 'themis-finals::prerequisite_git'
-include_recipe 'themis-finals::prerequisite_python'
-include_recipe 'themis-finals::prerequisite_supervisor'
+include_recipe 'modern_nginx::default'
+include_recipe 'latest-redis::default'
+include_recipe 'supervisor::default'
 
 directory node[id]['basedir'] do
   owner node[id]['user']
@@ -25,6 +25,7 @@ if node.chef_environment.start_with? 'development'
 
   if ssh_key_map.size > 0
     url_repository = "git@github.com:#{node[id]['github_repository']}.git"
+    ssh_known_hosts_entry 'github.com'
   end
 end
 
@@ -57,7 +58,7 @@ if node.chef_environment.start_with? 'development'
   end
 end
 
-virtualenv_path = ::File.join node[id]['basedir'], '.virtualenv'
+virtualenv_path = ::File.join node[id]['basedir'], '.venv'
 
 python_virtualenv virtualenv_path do
   user node[id]['user']
@@ -86,12 +87,16 @@ namespace = "#{node['themis-finals']['supervisor']['namespace']}.checker.#{node[
 # sentry_dsn = (sentry_data_bag_item.nil?) ? {} : sentry_data_bag_item.to_hash.fetch('dsn', {})
 
 checker_environment = {
-  'PATH' => "#{::File.join virtualenv_path, 'bin'}:%(ENV_PATH)s",
-  'APP_INSTANCE' => '%(process_num)s',
+  'HOST' => '127.0.0.1',
+  'PORT' => node[id]['server']['port_range_start'],
+  'INSTANCE' => '%(process_num)s',
   'LOG_LEVEL' => node[id]['debug'] ? 'DEBUG' : 'INFO',
-  'BEANSTALKD_URI' => "#{node['themis-finals']['beanstalkd']['host']}:#{node['themis-finals']['beanstalkd']['port']}",
-  'TUBE_LISTEN' => "#{node['themis-finals']['beanstalkd']['tube_namespace']}.service.#{node[id]['service_alias']}.listen",
-  'TUBE_REPORT' => "#{node['themis-finals']['beanstalkd']['tube_namespace']}.service.#{node[id]['service_alias']}.report"
+  'STDOUT_SYNC' => node[id]['debug'],
+  'REDIS_HOST' => node['latest-redis']['listen']['host'],
+  'REDIS_PORT' => node['latest-redis']['listen']['port'],
+  'REDIS_DB' => node[id]['queue']['redis_db'],
+  'THEMIS_FINALS_KEY_NONCE_SIZE' => node['themis-finals']['key_nonce_size'],
+  'THEMIS_FINALS_AUTH_TOKEN_HEADER' => node['themis-finals']['auth_token_header']
 }
 
 # unless sentry_dsn.fetch(node[id]['service_alias'], nil).nil?
@@ -99,9 +104,9 @@ checker_environment = {
 # end
 
 supervisor_service "#{namespace}.server" do
-  command "python checker.py"
-  process_name 'checker-%(process_num)s'
-  numprocs node[id]['processes']
+  command 'sh script/server'
+  process_name 'server-%(process_num)s'
+  numprocs node[id]['server']['processes']
   numprocs_start 0
   priority 300
   autostart false
@@ -111,21 +116,58 @@ supervisor_service "#{namespace}.server" do
   exitcodes [0, 2]
   stopsignal :INT
   stopwaitsecs 10
-  stopasgroup false
-  killasgroup false
+  stopasgroup true
+  killasgroup true
   user node[id]['user']
   redirect_stderr false
-  stdout_logfile ::File.join logs_basedir, 'checker-%(process_num)s-stdout.log'
+  stdout_logfile ::File.join logs_basedir, 'server-%(process_num)s-stdout.log'
   stdout_logfile_maxbytes '10MB'
   stdout_logfile_backups 10
   stdout_capture_maxbytes '0'
   stdout_events_enabled false
-  stderr_logfile ::File.join logs_basedir, 'checker-%(process_num)s-stderr.log'
+  stderr_logfile ::File.join logs_basedir, 'server-%(process_num)s-stderr.log'
   stderr_logfile_maxbytes '10MB'
   stderr_logfile_backups 10
   stderr_capture_maxbytes '0'
   stderr_events_enabled false
-  environment checker_environment
+  environment checker_environment.merge(
+    'THEMIS_FINALS_MASTER_KEY' => data_bag_item('themis-finals', node.chef_environment)['keys']['master']
+  )
+  directory node[id]['basedir']
+  serverurl 'AUTO'
+  action :enable
+end
+
+supervisor_service "#{namespace}.queue" do
+  command 'sh script/queue'
+  process_name 'queue-%(process_num)s'
+  numprocs node[id]['queue']['processes']
+  numprocs_start 0
+  priority 300
+  autostart false
+  autorestart true
+  startsecs 1
+  startretries 3
+  exitcodes [0, 2]
+  stopsignal :INT
+  stopwaitsecs 10
+  stopasgroup true
+  killasgroup true
+  user node[id]['user']
+  redirect_stderr false
+  stdout_logfile ::File.join logs_basedir, 'queue-%(process_num)s-stdout.log'
+  stdout_logfile_maxbytes '10MB'
+  stdout_logfile_backups 10
+  stdout_capture_maxbytes '0'
+  stdout_events_enabled false
+  stderr_logfile ::File.join logs_basedir, 'queue-%(process_num)s-stderr.log'
+  stderr_logfile_maxbytes '10MB'
+  stderr_logfile_backups 10
+  stderr_capture_maxbytes '0'
+  stderr_events_enabled false
+  environment checker_environment.merge(
+    'THEMIS_FINALS_CHECKER_KEY' => data_bag_item('themis-finals', node.chef_environment)['keys']['checker']
+  )
   directory node[id]['basedir']
   serverurl 'AUTO'
   action :enable
@@ -133,7 +175,24 @@ end
 
 supervisor_group namespace do
   programs [
-    "#{namespace}.server"
+    "#{namespace}.server",
+    "#{namespace}.queue"
   ]
   action :enable
 end
+
+template "#{node['nginx']['dir']}/sites-available/themis-finals-checker-#{node[id]['service_alias']}.conf" do
+  source 'nginx.conf.erb'
+  mode 0644
+  variables(
+    server_name: node[id]['fqdn'],
+    service_name: node[id]['service_alias'],
+    logs_basedir: logs_basedir,
+    server_processes: node[id]['server']['processes'],
+    server_port_start: node[id]['server']['port_range_start']
+  )
+  notifies :reload, 'service[nginx]', :delayed
+  action :create
+end
+
+nginx_site "themis-finals-checker-#{node[id]['service_alias']}.conf"

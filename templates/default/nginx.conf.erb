@@ -1,0 +1,32 @@
+upstream <%= @service_name %>_server {
+  <% (0...@server_processes).to_a.each do |num| %>
+  server 127.0.0.1:<%= @server_port_start + num %>;
+  <% end %>
+}
+
+server {
+  listen 80;
+  server_name <%= @server_name %>;
+
+  access_log <%= @logs_basedir %>/nginx_access.log;
+  error_log <%= @logs_basedir %>/nginx_error.log;
+
+  keepalive_timeout 100;
+  charset utf-8;
+
+  location / {
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Host $http_host;
+
+    proxy_pass http://<%= @service_name %>_server/;
+    proxy_redirect off;
+
+    proxy_http_version 1.1;
+    chunked_transfer_encoding off;
+    proxy_buffering off;
+    proxy_cache off;
+
+    client_max_body_size 1m;
+  }
+}
