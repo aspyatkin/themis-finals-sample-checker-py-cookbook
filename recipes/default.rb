@@ -1,8 +1,16 @@
-id = 'themis-finals-sample-checker-py'
+id = 'themis-finals-service2-checker'
 
 include_recipe 'modern_nginx::default'
 include_recipe 'latest-redis::default'
 include_recipe 'supervisor::default'
+
+if node[id]['source_packages']
+  include_recipe 'themis-finals-checker-app-py-lib'
+  include_recipe 'themis-finals-checker-result-py-lib'
+  include_recipe 'themis-finals-api-auth-py-lib'
+
+  python_package 'twine'
+end
 
 directory node[id]['basedir'] do
   owner node[id]['user']
@@ -19,11 +27,17 @@ if node.chef_environment.start_with? 'development'
   begin
     ssh_data_bag_item = data_bag_item('ssh', node.chef_environment)
   rescue
+    ::Chef::Log.warn 'Check whether ssh data bag exists!'
   end
 
-  ssh_key_map = (ssh_data_bag_item.nil?) ? {} : ssh_data_bag_item.to_hash.fetch('keys', {})
+  ssh_key_map = \
+    if ssh_data_bag_item.nil?
+      {}
+    else
+      ssh_data_bag_item.to_hash.fetch 'keys', {}
+    end
 
-  if ssh_key_map.size > 0
+  unless ssh_key_map.empty?
     url_repository = "git@github.com:#{node[id]['github_repository']}.git"
     ssh_known_hosts_entry 'github.com'
   end
@@ -42,9 +56,15 @@ if node.chef_environment.start_with? 'development'
   begin
     git_data_bag_item = data_bag_item('git', node.chef_environment)
   rescue
+    ::Chef::Log.warn 'Check whether git data bag exists!'
   end
 
-  git_options = (git_data_bag_item.nil?) ? {} : git_data_bag_item.to_hash.fetch('config', {})
+  git_options = \
+    if git_data_bag_item.nil?
+      {}
+    else
+      git_data_bag_item.to_hash.fetch 'config', {}
+    end
 
   git_options.each do |key, value|
     git_config "git-config #{key} at #{node[id]['basedir']}" do
@@ -67,16 +87,42 @@ python_virtualenv virtualenv_path do
   action :create
 end
 
+pip_options = {}
+
+if node[id]['source_packages']
+  constraints_file = ::File.join node[id]['basedir'], 'constraints.txt'
+
+  template constraints_file do
+    source 'constraints.txt.erb'
+    mode 0644
+    variables(
+      constraints: {
+        'themis.finals.checker.app' => \
+          node['themis-finals-checker-app-py-lib']['basedir'],
+        'themis.finals.checker.result' => \
+          node['themis-finals-checker-result-py-lib']['basedir'],
+        'themis.finals.api.auth' => \
+          node['themis-finals-api-auth-py-lib']['basedir']
+      }
+    )
+    action :create
+  end
+
+  pip_options['constraint'] = constraints_file
+end
+
 pip_requirements "#{node[id]['basedir']}/requirements.txt" do
   user node[id]['user']
   group node[id]['group']
   virtualenv virtualenv_path
+  options pip_options.map { |k, v| "--#{k}=#{v}" }.join ' '
   action :install
 end
 
 logs_basedir = ::File.join node[id]['basedir'], 'logs'
 
-namespace = "#{node['themis-finals']['supervisor']['namespace']}.checker.#{node[id]['service_alias']}"
+namespace = "#{node['themis-finals']['supervisor']['namespace']}.checker."\
+            "#{node[id]['service_alias']}"
 
 # sentry_data_bag_item = nil
 # begin
@@ -84,7 +130,12 @@ namespace = "#{node['themis-finals']['supervisor']['namespace']}.checker.#{node[
 # rescue
 # end
 
-# sentry_dsn = (sentry_data_bag_item.nil?) ? {} : sentry_data_bag_item.to_hash.fetch('dsn', {})
+# sentry_dsn = \
+#   if sentry_data_bag_item.nil?
+#     {}
+#   else
+#     sentry_data_bag_item.to_hash.fetch 'dsn', {}
+#   end
 
 checker_environment = {
   'HOST' => '127.0.0.1',
@@ -96,11 +147,13 @@ checker_environment = {
   'REDIS_PORT' => node['latest-redis']['listen']['port'],
   'REDIS_DB' => node[id]['queue']['redis_db'],
   'THEMIS_FINALS_KEY_NONCE_SIZE' => node['themis-finals']['key_nonce_size'],
-  'THEMIS_FINALS_AUTH_TOKEN_HEADER' => node['themis-finals']['auth_token_header']
+  'THEMIS_FINALS_AUTH_TOKEN_HEADER' => \
+    node['themis-finals']['auth_token_header']
 }
 
 # unless sentry_dsn.fetch(node[id]['service_alias'], nil).nil?
-#   checker_environment['SENTRY_DSN'] = sentry_dsn.fetch(node[id]['service_alias'])
+#   checker_environment['SENTRY_DSN'] = \
+#     sentry_dsn.fetch node[id]['service_alias']
 # end
 
 supervisor_service "#{namespace}.server" do
@@ -131,7 +184,8 @@ supervisor_service "#{namespace}.server" do
   stderr_capture_maxbytes '0'
   stderr_events_enabled false
   environment checker_environment.merge(
-    'THEMIS_FINALS_MASTER_KEY' => data_bag_item('themis-finals', node.chef_environment)['keys']['master']
+    'THEMIS_FINALS_MASTER_KEY' => \
+      data_bag_item('themis-finals', node.chef_environment)['keys']['master']
   )
   directory node[id]['basedir']
   serverurl 'AUTO'
@@ -166,7 +220,8 @@ supervisor_service "#{namespace}.queue" do
   stderr_capture_maxbytes '0'
   stderr_events_enabled false
   environment checker_environment.merge(
-    'THEMIS_FINALS_CHECKER_KEY' => data_bag_item('themis-finals', node.chef_environment)['keys']['checker']
+    'THEMIS_FINALS_CHECKER_KEY' => \
+      data_bag_item('themis-finals', node.chef_environment)['keys']['checker']
   )
   directory node[id]['basedir']
   serverurl 'AUTO'
@@ -181,7 +236,9 @@ supervisor_group namespace do
   action :enable
 end
 
-template "#{node['nginx']['dir']}/sites-available/themis-finals-checker-#{node[id]['service_alias']}.conf" do
+ngx_conf_file = "themis-finals-checker-#{node[id]['service_alias']}.conf"
+
+template "#{node['nginx']['dir']}/sites-available/#{ngx_conf_file}" do
   source 'nginx.conf.erb'
   mode 0644
   variables(
@@ -195,4 +252,4 @@ template "#{node['nginx']['dir']}/sites-available/themis-finals-checker-#{node[i
   action :create
 end
 
-nginx_site "themis-finals-checker-#{node[id]['service_alias']}.conf"
+nginx_site ngx_conf_file
