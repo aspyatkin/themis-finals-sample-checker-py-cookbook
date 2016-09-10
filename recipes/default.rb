@@ -127,7 +127,6 @@ checker_environment = {
   'PORT' => node[id]['server']['port_range_start'],
   'INSTANCE' => '%(process_num)s',
   'LOG_LEVEL' => node[id]['debug'] ? 'DEBUG' : 'INFO',
-  'STDOUT_SYNC' => node[id]['debug'],
   'REDIS_HOST' => node['latest-redis']['listen']['host'],
   'REDIS_PORT' => node['latest-redis']['listen']['port'],
   'REDIS_DB' => node[id]['queue']['redis_db'],
@@ -147,7 +146,7 @@ supervisor_service "#{namespace}.server" do
   numprocs node[id]['server']['processes']
   numprocs_start 0
   priority 300
-  autostart false
+  autostart node[id]['autostart']
   autorestart true
   startsecs 1
   startretries 3
@@ -183,7 +182,7 @@ supervisor_service "#{namespace}.queue" do
   numprocs node[id]['queue']['processes']
   numprocs_start 0
   priority 300
-  autostart false
+  autostart node[id]['autostart']
   autorestart true
   startsecs 1
   startretries 3
@@ -231,7 +230,8 @@ template "#{node['nginx']['dir']}/sites-available/#{ngx_conf_file}" do
     service_name: node[id]['service_alias'],
     logs_basedir: logs_basedir,
     server_processes: node[id]['server']['processes'],
-    server_port_start: node[id]['server']['port_range_start']
+    server_port_start: node[id]['server']['port_range_start'],
+    internal_networks: node['themis-finals']['config']['internal_networks']
   )
   notifies :reload, 'service[nginx]', :delayed
   action :create
