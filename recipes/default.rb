@@ -109,18 +109,19 @@ logs_basedir = ::File.join node[id]['basedir'], 'logs'
 namespace = "#{node['themis-finals']['supervisor_namespace']}.checker."\
             "#{node[id]['service_alias']}"
 
-# sentry_data_bag_item = nil
-# begin
-#   sentry_data_bag_item = data_bag_item('sentry', node.chef_environment)
-# rescue
-# end
+sentry_data_bag_item = nil
+begin
+  sentry_data_bag_item = data_bag_item('sentry', node.chef_environment)
+rescue
+  ::Chef::Log.warn 'Check whether sentry data bag exists!'
+end
 
-# sentry_dsn = \
-#   if sentry_data_bag_item.nil?
-#     {}
-#   else
-#     sentry_data_bag_item.to_hash.fetch 'dsn', {}
-#   end
+sentry_dsn = \
+  if sentry_data_bag_item.nil?
+    {}
+  else
+    sentry_data_bag_item.to_hash.fetch 'dsn', {}
+  end
 
 checker_environment = {
   'HOST' => '127.0.0.1',
@@ -135,10 +136,10 @@ checker_environment = {
     node['themis-finals']['auth_token_header']
 }
 
-# unless sentry_dsn.fetch(node[id]['service_alias'], nil).nil?
-#   checker_environment['SENTRY_DSN'] = \
-#     sentry_dsn.fetch node[id]['service_alias']
-# end
+unless sentry_dsn.fetch(node[id]['service_alias'], nil).nil?
+  checker_environment['SENTRY_DSN'] = \
+    sentry_dsn.fetch node[id]['service_alias']
+end
 
 supervisor_service "#{namespace}.server" do
   command 'sh script/server'
