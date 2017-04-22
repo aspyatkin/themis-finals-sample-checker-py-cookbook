@@ -1,13 +1,9 @@
 id = 'themis-finals-service2-checker'
 
-include_recipe 'modern_nginx::default'
-include_recipe 'latest-redis::default'
-include_recipe 'supervisor::default'
-
 if node[id]['source_packages']
-  include_recipe 'themis-finals-checker-app-py-lib'
-  include_recipe 'themis-finals-checker-result-py-lib'
-  include_recipe 'themis-finals-api-auth-py-lib'
+  include_recipe 'themis-finals-checker-app-py-lib::default'
+  include_recipe 'themis-finals-checker-result-py-lib::default'
+  include_recipe 'themis-finals-api-auth-py-lib::default'
 
   python_package 'twine'
 end
@@ -22,7 +18,7 @@ end
 
 url_repository = "https://github.com/#{node[id]['github_repository']}"
 
-if node.chef_environment.start_with? 'development'
+if node.chef_environment.start_with?('development')
   ssh_private_key node[id]['user']
   ssh_known_hosts_entry 'github.com'
   url_repository = "git@github.com:#{node[id]['github_repository']}.git"
@@ -36,19 +32,19 @@ git2 node[id]['basedir'] do
   action :create
 end
 
-if node.chef_environment.start_with? 'development'
+if node.chef_environment.start_with?('development')
   git_data_bag_item = nil
   begin
     git_data_bag_item = data_bag_item('git', node.chef_environment)
   rescue
-    ::Chef::Log.warn 'Check whether git data bag exists!'
+    ::Chef::Log.warn('Check whether git data bag exists!')
   end
 
   git_options = \
     if git_data_bag_item.nil?
       {}
     else
-      git_data_bag_item.to_hash.fetch 'config', {}
+      git_data_bag_item.to_hash.fetch('config', {})
     end
 
   git_options.each do |key, value|
@@ -63,7 +59,7 @@ if node.chef_environment.start_with? 'development'
   end
 end
 
-virtualenv_path = ::File.join node[id]['basedir'], '.venv'
+virtualenv_path = ::File.join(node[id]['basedir'], '.venv')
 
 python_virtualenv virtualenv_path do
   user node[id]['user']
@@ -75,7 +71,7 @@ end
 pip_options = {}
 
 if node[id]['source_packages']
-  constraints_file = ::File.join node[id]['basedir'], 'constraints.txt'
+  constraints_file = ::File.join(node[id]['basedir'], 'constraints.txt')
 
   template constraints_file do
     source 'constraints.txt.erb'
@@ -96,15 +92,15 @@ if node[id]['source_packages']
   pip_options['constraint'] = constraints_file
 end
 
-pip_requirements "#{node[id]['basedir']}/requirements.txt" do
+pip_requirements ::File.join(node[id]['basedir'], 'requirements.txt') do
   user node[id]['user']
   group node[id]['group']
   virtualenv virtualenv_path
-  options pip_options.map { |k, v| "--#{k}=#{v}" }.join ' '
+  options pip_options.map { |k, v| "--#{k}=#{v}" }.join(' ')
   action :install
 end
 
-logs_basedir = ::File.join node[id]['basedir'], 'logs'
+logs_basedir = ::File.join(node[id]['basedir'], 'logs')
 
 namespace = "#{node['themis-finals']['supervisor_namespace']}.checker."\
             "#{node[id]['service_alias']}"
@@ -113,14 +109,14 @@ sentry_data_bag_item = nil
 begin
   sentry_data_bag_item = data_bag_item('sentry', node.chef_environment)
 rescue
-  ::Chef::Log.warn 'Check whether sentry data bag exists!'
+  ::Chef::Log.warn('Check whether sentry data bag exists!')
 end
 
 sentry_dsn = \
   if sentry_data_bag_item.nil?
     {}
   else
-    sentry_data_bag_item.to_hash.fetch 'dsn', {}
+    sentry_data_bag_item.to_hash.fetch('dsn', {})
   end
 
 checker_environment = {
@@ -158,12 +154,12 @@ supervisor_service "#{namespace}.server" do
   killasgroup true
   user node[id]['user']
   redirect_stderr false
-  stdout_logfile ::File.join logs_basedir, 'server-%(process_num)s-stdout.log'
+  stdout_logfile ::File.join(logs_basedir, 'server-%(process_num)s-stdout.log')
   stdout_logfile_maxbytes '10MB'
   stdout_logfile_backups 10
   stdout_capture_maxbytes '0'
   stdout_events_enabled false
-  stderr_logfile ::File.join logs_basedir, 'server-%(process_num)s-stderr.log'
+  stderr_logfile ::File.join(logs_basedir, 'server-%(process_num)s-stderr.log')
   stderr_logfile_maxbytes '10MB'
   stderr_logfile_backups 10
   stderr_capture_maxbytes '0'
@@ -194,19 +190,22 @@ supervisor_service "#{namespace}.queue" do
   killasgroup true
   user node[id]['user']
   redirect_stderr false
-  stdout_logfile ::File.join logs_basedir, 'queue-%(process_num)s-stdout.log'
+  stdout_logfile ::File.join(logs_basedir, 'queue-%(process_num)s-stdout.log')
   stdout_logfile_maxbytes '10MB'
   stdout_logfile_backups 10
   stdout_capture_maxbytes '0'
   stdout_events_enabled false
-  stderr_logfile ::File.join logs_basedir, 'queue-%(process_num)s-stderr.log'
+  stderr_logfile ::File.join(logs_basedir, 'queue-%(process_num)s-stderr.log')
   stderr_logfile_maxbytes '10MB'
   stderr_logfile_backups 10
   stderr_capture_maxbytes '0'
   stderr_events_enabled false
   environment checker_environment.merge(
     'THEMIS_FINALS_CHECKER_KEY' => \
-      data_bag_item('themis-finals', node.chef_environment)['keys']['checker']
+      data_bag_item('themis-finals', node.chef_environment)['keys']['checker'],
+    'THEMIS_FINALS_FLAG_SIGN_KEY_PUBLIC' => data_bag_item('themis-finals', node.chef_environment)['sign_key']['public'].gsub("\n", "\\n"),
+    'THEMIS_FINALS_FLAG_WRAP_PREFIX' => node['themis-finals']['flag_wrap']['prefix'],
+    'THEMIS_FINALS_FLAG_WRAP_SUFFIX' => node['themis-finals']['flag_wrap']['suffix']
   )
   directory node[id]['basedir']
   serverurl 'AUTO'
@@ -221,11 +220,8 @@ supervisor_group namespace do
   action :enable
 end
 
-ngx_conf_file = "themis-finals-checker-#{node[id]['service_alias']}.conf"
-
-template "#{node['nginx']['dir']}/sites-available/#{ngx_conf_file}" do
-  source 'nginx.conf.erb'
-  mode 0644
+nginx_site "themis-finals-checker-#{node[id]['service_alias']}" do
+  template 'nginx.conf.erb'
   variables(
     server_name: node[id]['fqdn'],
     service_name: node[id]['service_alias'],
@@ -234,8 +230,5 @@ template "#{node['nginx']['dir']}/sites-available/#{ngx_conf_file}" do
     server_port_start: node[id]['server']['port_range_start'],
     internal_networks: node['themis-finals']['config']['internal_networks']
   )
-  notifies :reload, 'service[nginx]', :delayed
-  action :create
+  action :enable
 end
-
-nginx_site ngx_conf_file
