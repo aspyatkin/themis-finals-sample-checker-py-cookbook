@@ -1,0 +1,24 @@
+version: 1
+disable_existing_loggers: false
+formatters:
+  default:
+    format: '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+handlers:
+  default:
+    class: 'logging.StreamHandler'
+    formatter: 'default'
+    level: <%= @debug ? "'DEBUG'" : "'INFO'" %>
+    stream: 'ext://sys.stdout'
+root:
+  handlers:
+    - 'default'
+  level: <%= @debug ? "'DEBUG'" : "'INFO'" %>
+loggers:
+  requests:
+    handlers:
+      - 'default'
+    level: 'WARNING'
+  rq:
+    handlers:
+      - 'default'
+    level: 'WARNING'

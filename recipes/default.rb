@@ -119,6 +119,17 @@ sentry_dsn = \
     sentry_data_bag_item.to_hash.fetch('dsn', {})
   end
 
+logging_config_file = ::File.join(node[id]['basedir'], 'logging.yaml')
+
+template logging_config_file do
+  source 'logging.yaml.erb'
+  mode 0644
+  variables(
+    debug: node[id]['debug']
+  )
+  action :create
+end
+
 checker_environment = {
   'HOST' => '127.0.0.1',
   'PORT' => node[id]['server']['port_range_start'],
@@ -129,7 +140,8 @@ checker_environment = {
   'REDIS_DB' => node[id]['queue']['redis_db'],
   'THEMIS_FINALS_KEY_NONCE_SIZE' => node['themis-finals']['key_nonce_size'],
   'THEMIS_FINALS_AUTH_TOKEN_HEADER' => \
-    node['themis-finals']['auth_token_header']
+    node['themis-finals']['auth_token_header'],
+  'LOGGING_CONFIG_FILE' => logging_config_file
 }
 
 unless sentry_dsn.fetch(node[id]['service_alias'], nil).nil?

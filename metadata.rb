@@ -1,6 +1,6 @@
 name 'themis-finals-service2-checker'
 description 'Installs and configures Themis Finals service2 checker'
-version '1.3.1'
+version '1.3.2'
 
 recipe 'themis-finals-service2-checker', 'Installs and configures Themis Finals service2 checker'
 depends 'git', '~> 6.0.0'
