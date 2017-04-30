@@ -1,10 +1,11 @@
 name 'themis-finals-service2-checker'
 description 'Installs and configures Themis Finals service2 checker'
-version '1.3.2'
+version '1.3.3'
 
 recipe 'themis-finals-service2-checker', 'Installs and configures Themis Finals service2 checker'
 depends 'git', '~> 6.0.0'
 depends 'git2', '~> 1.0.0'
+depends 'poise-python', '~> 1.6.0'
 depends 'supervisor', '~> 0.4.12'
 depends 'themis-finals-checker-app-py-lib', '~> 1.1.0'
 depends 'themis-finals-checker-result-py-lib', '~> 1.1.0'

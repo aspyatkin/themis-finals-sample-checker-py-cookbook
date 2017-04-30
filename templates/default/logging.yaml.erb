@@ -9,9 +9,19 @@ handlers:
     formatter: 'default'
     level: <%= @debug ? "'DEBUG'" : "'INFO'" %>
     stream: 'ext://sys.stdout'
+  <% unless @sentry_dsn.nil? %>
+  sentry:
+    class: 'raven.handlers.logging.SentryHandler'
+    formatter: 'default'
+    level: <%= @debug ? "'DEBUG'" : "'INFO'" %>
+    dsn: '<%= @sentry_dsn %>'
+  <% end %>
 root:
   handlers:
     - 'default'
+    <% unless @sentry_dsn.nil? %>
+    - 'sentry'
+    <% end %>
   level: <%= @debug ? "'DEBUG'" : "'INFO'" %>
 loggers:
   requests:

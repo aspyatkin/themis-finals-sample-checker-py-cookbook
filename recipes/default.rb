@@ -125,7 +125,8 @@ template logging_config_file do
   source 'logging.yaml.erb'
   mode 0644
   variables(
-    debug: node[id]['debug']
+    debug: node[id]['debug'],
+    sentry_dsn: sentry_dsn.fetch(node[id]['service_alias'], nil)
   )
   action :create
 end
