@@ -179,7 +179,51 @@ supervisor_service "#{namespace}.server" do
   stderr_events_enabled false
   environment checker_environment.merge(
     'THEMIS_FINALS_MASTER_KEY' => \
-      data_bag_item('themis-finals', node.chef_environment)['keys']['master']
+      data_bag_item('themis-finals', node.chef_environment)['keys']['master'],
+    'THEMIS_FINALS_CHECKER_PUSH_RUN_TIMEOUT' => node[id]['push_run_timeout'],
+    'THEMIS_FINALS_CHECKER_PUSH_QUEUE_TTL' => node[id]['push_queue_ttl'],
+    'THEMIS_FINALS_CHECKER_PULL_RUN_TIMEOUT' => node[id]['pull_run_timeout'],
+    'THEMIS_FINALS_CHECKER_PULL_QUEUE_TTL' => node[id]['pull_queue_ttl'],
+    'THEMIS_FINALS_CHECKER_RESULT_TTL' => node[id]['result_ttl']
+  )
+  directory node[id]['basedir']
+  serverurl 'AUTO'
+  action :enable
+end
+
+supervisor_service "#{namespace}.dashboard" do
+  command 'sh script/dashboard'
+  process_name 'dashboard'
+  numprocs 1
+  numprocs_start 0
+  priority 300
+  autostart node[id]['autostart']
+  autorestart true
+  startsecs 1
+  startretries 3
+  exitcodes [0, 2]
+  stopsignal :INT
+  stopwaitsecs 10
+  stopasgroup true
+  killasgroup true
+  user node[id]['user']
+  redirect_stderr false
+  stdout_logfile ::File.join(logs_basedir, 'dashboard-stdout.log')
+  stdout_logfile_maxbytes '10MB'
+  stdout_logfile_backups 10
+  stdout_capture_maxbytes '0'
+  stdout_events_enabled false
+  stderr_logfile ::File.join(logs_basedir, 'dashboard-stderr.log')
+  stderr_logfile_maxbytes '10MB'
+  stderr_logfile_backups 10
+  stderr_capture_maxbytes '0'
+  stderr_events_enabled false
+  environment(
+    'HOST' => node[id]['dashboard']['host'],
+    'PORT' => node[id]['dashboard']['port'],
+    'REDIS_HOST' => node['latest-redis']['listen']['host'],
+    'REDIS_PORT' => node['latest-redis']['listen']['port'],
+    'REDIS_DB' => node[id]['queue']['redis_db']
   )
   directory node[id]['basedir']
   serverurl 'AUTO'
@@ -228,6 +272,7 @@ end
 supervisor_group namespace do
   programs [
     "#{namespace}.server",
+    "#{namespace}.dashboard",
     "#{namespace}.queue"
   ]
   action :enable

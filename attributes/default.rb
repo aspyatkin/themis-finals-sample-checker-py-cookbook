@@ -17,3 +17,12 @@ default[id]['queue']['redis_db'] = 11
 
 default[id]['source_packages'] = false
 default[id]['autostart'] = false
+
+default[id]['dashboard']['host'] = '127.0.0.1'
+default[id]['dashboard']['port'] = 9181
+
+default[id]['push_run_timeout'] = 60
+default[id]['push_queue_ttl'] = 60
+default[id]['pull_run_timeout'] = 30
+default[id]['pull_queue_ttl'] = 30
+default[id]['result_ttl'] = 300
