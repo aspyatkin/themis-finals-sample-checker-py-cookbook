@@ -1,4 +1,5 @@
 id = 'themis-finals-service2-checker'
+h = ::ChefCookbook::Instance::Helper.new(node)
 
 if node[id]['source_packages']
   include_recipe 'themis-finals-checker-app-py-lib::default'
@@ -9,8 +10,8 @@ if node[id]['source_packages']
 end
 
 directory node[id]['basedir'] do
-  owner node[id]['user']
-  group node[id]['group']
+  owner h.instance_user
+  group h.instance_group
   mode 0755
   recursive true
   action :create
@@ -19,7 +20,7 @@ end
 url_repository = "https://github.com/#{node[id]['github_repository']}"
 
 if node.chef_environment.start_with?('development')
-  ssh_private_key node[id]['user']
+  ssh_private_key h.instance_user
   ssh_known_hosts_entry 'github.com'
   url_repository = "git@github.com:#{node[id]['github_repository']}.git"
 end
@@ -27,8 +28,8 @@ end
 git2 node[id]['basedir'] do
   url url_repository
   branch node[id]['revision']
-  user node[id]['user']
-  group node[id]['group']
+  user h.instance_user
+  group h.instance_group
   action :create
 end
 
@@ -53,7 +54,7 @@ if node.chef_environment.start_with?('development')
       value value
       scope 'local'
       path node[id]['basedir']
-      user node[id]['user']
+      user h.instance_user
       action :set
     end
   end
@@ -62,8 +63,8 @@ end
 virtualenv_path = ::File.join(node[id]['basedir'], '.venv')
 
 python_virtualenv virtualenv_path do
-  user node[id]['user']
-  group node[id]['group']
+  user h.instance_user
+  group h.instance_group
   python '2'
   action :create
 end
@@ -93,8 +94,8 @@ if node[id]['source_packages']
 end
 
 pip_requirements ::File.join(node[id]['basedir'], 'requirements.txt') do
-  user node[id]['user']
-  group node[id]['group']
+  user h.instance_user
+  group h.instance_group
   virtualenv virtualenv_path
   options pip_options.map { |k, v| "--#{k}=#{v}" }.join(' ')
   action :install
@@ -165,7 +166,7 @@ supervisor_service "#{namespace}.server" do
   stopwaitsecs 10
   stopasgroup true
   killasgroup true
-  user node[id]['user']
+  user h.instance_user
   redirect_stderr false
   stdout_logfile ::File.join(logs_basedir, 'server-%(process_num)s-stdout.log')
   stdout_logfile_maxbytes '10MB'
@@ -191,45 +192,6 @@ supervisor_service "#{namespace}.server" do
   action :enable
 end
 
-supervisor_service "#{namespace}.dashboard" do
-  command 'sh script/dashboard'
-  process_name 'dashboard'
-  numprocs 1
-  numprocs_start 0
-  priority 300
-  autostart node[id]['autostart']
-  autorestart true
-  startsecs 1
-  startretries 3
-  exitcodes [0, 2]
-  stopsignal :INT
-  stopwaitsecs 10
-  stopasgroup true
-  killasgroup true
-  user node[id]['user']
-  redirect_stderr false
-  stdout_logfile ::File.join(logs_basedir, 'dashboard-stdout.log')
-  stdout_logfile_maxbytes '10MB'
-  stdout_logfile_backups 10
-  stdout_capture_maxbytes '0'
-  stdout_events_enabled false
-  stderr_logfile ::File.join(logs_basedir, 'dashboard-stderr.log')
-  stderr_logfile_maxbytes '10MB'
-  stderr_logfile_backups 10
-  stderr_capture_maxbytes '0'
-  stderr_events_enabled false
-  environment(
-    'HOST' => node[id]['dashboard']['host'],
-    'PORT' => node[id]['dashboard']['port'],
-    'REDIS_HOST' => node['latest-redis']['listen']['host'],
-    'REDIS_PORT' => node['latest-redis']['listen']['port'],
-    'REDIS_DB' => node[id]['queue']['redis_db']
-  )
-  directory node[id]['basedir']
-  serverurl 'AUTO'
-  action :enable
-end
-
 supervisor_service "#{namespace}.queue" do
   command 'sh script/queue'
   process_name 'queue-%(process_num)s'
@@ -245,7 +207,7 @@ supervisor_service "#{namespace}.queue" do
   stopwaitsecs 10
   stopasgroup true
   killasgroup true
-  user node[id]['user']
+  user h.instance_user
   redirect_stderr false
   stdout_logfile ::File.join(logs_basedir, 'queue-%(process_num)s-stdout.log')
   stdout_logfile_maxbytes '10MB'
@@ -272,7 +234,6 @@ end
 supervisor_group namespace do
   programs [
     "#{namespace}.server",
-    "#{namespace}.dashboard",
     "#{namespace}.queue"
   ]
   action :enable

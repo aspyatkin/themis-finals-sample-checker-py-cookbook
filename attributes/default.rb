@@ -3,8 +3,6 @@ id = 'themis-finals-service2-checker'
 default[id]['basedir'] = '/var/themis/finals/checker/service2'
 default[id]['github_repository'] = 'themis-project/themis-finals-service2-checker'
 default[id]['revision'] = 'master'
-default[id]['user'] = 'vagrant'
-default[id]['group'] = 'vagrant'
 
 default[id]['debug'] = false
 default[id]['service_alias'] = 'service2'
@@ -17,9 +15,6 @@ default[id]['queue']['redis_db'] = 11
 
 default[id]['source_packages'] = false
 default[id]['autostart'] = false
-
-default[id]['dashboard']['host'] = '127.0.0.1'
-default[id]['dashboard']['port'] = 9181
 
 default[id]['push_run_timeout'] = 60
 default[id]['push_queue_ttl'] = 60
