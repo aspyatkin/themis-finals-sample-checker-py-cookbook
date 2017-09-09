@@ -101,7 +101,7 @@ pip_requirements ::File.join(node[id]['basedir'], 'requirements.txt') do
   action :install
 end
 
-logs_basedir = ::File.join(node[id]['basedir'], 'logs')
+script_dir = ::File.join(node[id]['basedir'], 'script')
 
 namespace = "#{node['themis-finals']['supervisor_namespace']}.checker."\
             "#{node[id]['service_alias']}"
@@ -168,12 +168,12 @@ supervisor_service "#{namespace}.server" do
   killasgroup true
   user h.instance_user
   redirect_stderr false
-  stdout_logfile ::File.join(logs_basedir, 'server-%(process_num)s-stdout.log')
+  stdout_logfile ::File.join(node['supervisor']['log_dir'], "#{namespace}.server-%(process_num)s-stdout.log")
   stdout_logfile_maxbytes '10MB'
   stdout_logfile_backups 10
   stdout_capture_maxbytes '0'
   stdout_events_enabled false
-  stderr_logfile ::File.join(logs_basedir, 'server-%(process_num)s-stderr.log')
+  stderr_logfile ::File.join(node['supervisor']['log_dir'], "#{namespace}.server-%(process_num)s-stderr.log")
   stderr_logfile_maxbytes '10MB'
   stderr_logfile_backups 10
   stderr_capture_maxbytes '0'
@@ -190,6 +190,32 @@ supervisor_service "#{namespace}.server" do
   directory node[id]['basedir']
   serverurl 'AUTO'
   action :enable
+end
+
+template ::File.join(script_dir, 'tail-server-stdout') do
+  source 'tail.sh.erb'
+  owner h.instance_user
+  group h.instance_group
+  mode 0755
+  variables(
+    files: ::Range.new(0, node[id]['server']['processes'], true).map do |ndx|
+      ::File.join(node['supervisor']['log_dir'], "#{namespace}.server-#{ndx}-stdout.log")
+    end
+  )
+  action :create
+end
+
+template ::File.join(script_dir, 'tail-server-stderr') do
+  source 'tail.sh.erb'
+  owner h.instance_user
+  group h.instance_group
+  mode 0755
+  variables(
+    files: ::Range.new(0, node[id]['server']['processes'], true).map do |ndx|
+      ::File.join(node['supervisor']['log_dir'], "#{namespace}.server-#{ndx}-stderr.log")
+    end
+  )
+  action :create
 end
 
 supervisor_service "#{namespace}.queue" do
@@ -209,12 +235,12 @@ supervisor_service "#{namespace}.queue" do
   killasgroup true
   user h.instance_user
   redirect_stderr false
-  stdout_logfile ::File.join(logs_basedir, 'queue-%(process_num)s-stdout.log')
+  stdout_logfile ::File.join(node['supervisor']['log_dir'], "#{namespace}.queue-%(process_num)s-stdout.log")
   stdout_logfile_maxbytes '10MB'
   stdout_logfile_backups 10
   stdout_capture_maxbytes '0'
   stdout_events_enabled false
-  stderr_logfile ::File.join(logs_basedir, 'queue-%(process_num)s-stderr.log')
+  stderr_logfile ::File.join(node['supervisor']['log_dir'], "#{namespace}.queue-%(process_num)s-stderr.log")
   stderr_logfile_maxbytes '10MB'
   stderr_logfile_backups 10
   stderr_capture_maxbytes '0'
@@ -231,6 +257,32 @@ supervisor_service "#{namespace}.queue" do
   action :enable
 end
 
+template ::File.join(script_dir, 'tail-queue-stdout') do
+  source 'tail.sh.erb'
+  owner h.instance_user
+  group h.instance_group
+  mode 0755
+  variables(
+    files: ::Range.new(0, node[id]['queue']['processes'], true).map do |ndx|
+      ::File.join(node['supervisor']['log_dir'], "#{namespace}.queue-#{ndx}-stdout.log")
+    end
+  )
+  action :create
+end
+
+template ::File.join(script_dir, 'tail-queue-stderr') do
+  source 'tail.sh.erb'
+  owner h.instance_user
+  group h.instance_group
+  mode 0755
+  variables(
+    files: ::Range.new(0, node[id]['queue']['processes'], true).map do |ndx|
+      ::File.join(node['supervisor']['log_dir'], "#{namespace}.queue-#{ndx}-stderr.log")
+    end
+  )
+  action :create
+end
+
 supervisor_group namespace do
   programs [
     "#{namespace}.server",
@@ -239,12 +291,16 @@ supervisor_group namespace do
   action :enable
 end
 
-nginx_site "themis-finals-checker-#{node[id]['service_alias']}" do
+ngx_vhost = "themis-finals-checker-#{node[id]['service_alias']}"
+
+nginx_site ngx_vhost do
   template 'nginx.conf.erb'
   variables(
     server_name: node[id]['fqdn'],
     service_name: node[id]['service_alias'],
-    logs_basedir: logs_basedir,
+    debug: node[id]['debug'],
+    access_log: ::File.join(node['nginx']['log_dir'], "#{ngx_vhost}_access.log"),
+    error_log: ::File.join(node['nginx']['log_dir'], "#{ngx_vhost}_error.log"),
     server_processes: node[id]['server']['processes'],
     server_port_start: node[id]['server']['port_range_start'],
     internal_networks: node['themis-finals']['config']['internal_networks']
