@@ -1,17 +1,21 @@
-id = 'themis-finals-service2-checker'
+id = 'themis-finals-python-service-checker'
 
-default[id]['basedir'] = '/var/themis/finals/checker/service2'
-default[id]['github_repository'] = 'themis-project/themis-finals-service2-checker'
+default[id]['fqdn'] = nil
+
+default[id]['root'] = '/var/themis/finals/checker'
+default[id]['github_repository'] = 'themis-project/themis-finals-python-service-checker'
 default[id]['revision'] = 'master'
 
+default[id]['python'] = '2'
+
 default[id]['debug'] = false
-default[id]['service_alias'] = 'service2'
+default[id]['service_alias'] = 'python'
 
 default[id]['server']['processes'] = 2
 default[id]['server']['port_range_start'] = 10_100
 
 default[id]['queue']['processes'] = 2
-default[id]['queue']['redis_db'] = 11
+default[id]['queue']['redis_db'] = nil
 
 default[id]['source_packages'] = false
 default[id]['autostart'] = false
